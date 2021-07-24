@@ -21,19 +21,34 @@ namespace {
 
 class BPFELFObjectWriter : public MCELFObjectTargetWriter {
 public:
-  BPFELFObjectWriter(uint8_t OSABI);
+  BPFELFObjectWriter(uint8_t OSABI, bool isSolana);
   ~BPFELFObjectWriter() override = default;
 
 protected:
   unsigned getRelocType(MCContext &Ctx, const MCValue &Target,
                         const MCFixup &Fixup, bool IsPCRel) const override;
+
+  bool needsRelocateWithSymbol(const MCSymbol &Sym,
+                               unsigned Type) const override;
+private:
+  bool isSolana;
 };
 
 } // end anonymous namespace
 
-BPFELFObjectWriter::BPFELFObjectWriter(uint8_t OSABI)
+// Avoid section relocations because the BPF backend can only handle
+// section relocations with values (offset into the section containing
+// the symbol being relocated).  Forcing a relocation with a symbol
+// will result in the symbol's index being used in the .o file instead.
+bool BPFELFObjectWriter::needsRelocateWithSymbol(const MCSymbol &Sym,
+                                                 unsigned Type) const {
+  return isSolana;
+}
+
+BPFELFObjectWriter::BPFELFObjectWriter(uint8_t OSABI, bool isSolana)
     : MCELFObjectTargetWriter(/*Is64Bit*/ true, OSABI, ELF::EM_BPF,
-                              /*HasRelocationAddend*/ false) {}
+                              /*HasRelocationAddend*/ false),
+      isSolana(isSolana) {}
 
 unsigned BPFELFObjectWriter::getRelocType(MCContext &Ctx, const MCValue &Target,
                                           const MCFixup &Fixup,
@@ -42,13 +57,6 @@ unsigned BPFELFObjectWriter::getRelocType(MCContext &Ctx, const MCValue &Target,
   switch (Fixup.getKind()) {
   default:
     llvm_unreachable("invalid fixup kind!");
-  case FK_SecRel_8:
-    return ELF::R_BPF_64_64;
-  case FK_PCRel_4:
-  case FK_SecRel_4:
-    return ELF::R_BPF_64_32;
-  case FK_Data_8:
-    return ELF::R_BPF_64_64;
   case FK_Data_4:
     if (const MCSymbolRefExpr *A = Target.getSymA()) {
       const MCSymbol &Sym = A->getSymbol();
@@ -79,11 +87,16 @@ unsigned BPFELFObjectWriter::getRelocType(MCContext &Ctx, const MCValue &Target,
         }
       }
     }
+  case FK_PCRel_4:
+  case FK_SecRel_4:
     return ELF::R_BPF_64_32;
+  case FK_SecRel_8:
+  case FK_Data_8:
+    return ELF::R_BPF_64_64;
   }
 }
 
 std::unique_ptr<MCObjectTargetWriter>
-llvm::createBPFELFObjectWriter(uint8_t OSABI) {
-  return std::make_unique<BPFELFObjectWriter>(OSABI);
+llvm::createBPFELFObjectWriter(uint8_t OSABI, bool isSolana) {
+  return std::make_unique<BPFELFObjectWriter>(OSABI, isSolana);
 }

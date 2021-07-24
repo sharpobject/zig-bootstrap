@@ -43,10 +43,10 @@ STATISTIC(ObjectSizeIntrinsicsHandled,
           "Number of 'objectsize' intrinsic calls handled");
 
 static Value *lowerIsConstantIntrinsic(IntrinsicInst *II) {
-  if (auto *C = dyn_cast<Constant>(II->getOperand(0)))
-    if (C->isManifestConstant())
-      return ConstantInt::getTrue(II->getType());
-  return ConstantInt::getFalse(II->getType());
+  Value *Op = II->getOperand(0);
+
+  return isa<Constant>(Op) ? ConstantInt::getTrue(II->getType())
+                           : ConstantInt::getFalse(II->getType());
 }
 
 static bool replaceConditionalBranchesOnConstant(Instruction *II,
